@@ -35,7 +35,17 @@ struct Shape
 vector<Shape> shapes;    // 최대 10개. 도형들 저장할 벡터
 int selectedShape = -1;  // 선택된 도형 인덱스
 
+struct Pos
+{
+	float x;
+	float y;
+};
 float mouseX = 0.0f, mouseY = 0.0f; // 마우스 좌표
+Pos delta[8] = { 
+	{-0.05f, 0.0f}, {0.05f, 0.0f}, {0.0f, -0.05f}, {0.0f, 0.05f},   // 좌우하상
+	{-0.05f, -0.05f}, {0.05f, 0.05f}, {0.05f, -0.05f}, {-0.05f, 0.05f} // 좌하, 우상, 우하, 좌상
+};
+int moveDir = -1;
 
 void updateShape(Shape& shape)
 {
@@ -69,7 +79,7 @@ void AddLine(float nx, float ny)
 	Shape shape;
 	shape.type = ShapeType::Line;
 	shape.color = glm::vec4(0.0, 1.0, 0.0, 1.0); // 초록색
-	shape.vertices = { glm::vec3(nx, ny, 0.0f), glm::vec3(nx - 0.2f, ny - 0.1f, 0.0f) };
+	shape.vertices = { glm::vec3(nx, ny, 0.0f), glm::vec3(nx + 0.2f, ny, 0.0f) };
 	updateShape(shape);
 	shapes.push_back(shape);
 }
@@ -94,10 +104,10 @@ void AddRect(float nx, float ny)
 	shape.type = ShapeType::Rect;
 	shape.color = glm::vec4(1.0, 0.0, 1.0, 1.0); // 보라색
 
-	glm::vec3 topLeft(nx - 0.2f, ny + 0.2f, 0.0f);
-	glm::vec3 bottomLeft(nx - 0.2f, ny - 0.2f, 0.0f);
-	glm::vec3 bottomRight(nx + 0.2f, ny - 0.2f, 0.0f);
-	glm::vec3 topRight(nx + 0.2f, ny + 0.2f, 0.0f);
+	glm::vec3 topLeft(nx - 0.1f, ny + 0.1f, 0.0f);
+	glm::vec3 bottomLeft(nx - 0.1f, ny - 0.1f, 0.0f);
+	glm::vec3 bottomRight(nx + 0.1f, ny - 0.1f, 0.0f);
+	glm::vec3 topRight(nx + 0.1f, ny + 0.1f, 0.0f);
 	shape.vertices = {
 		topLeft, bottomLeft, bottomRight,
 		bottomRight, topRight, topLeft
@@ -175,12 +185,68 @@ void PixelTrans(int px, int py, float& nx, float& ny)
 	ny = -2.0f * py / height + 1.0f;
 }
 
+// 점 충돌 체크
+bool CollidPoint(Shape& shape, float nx, float ny)
+{
+	float x = shape.vertices[0].x;
+	float y = shape.vertices[0].y;
+	float offset = 0.009f;
+
+	if (nx >= x - offset && nx <= x + offset && ny >= y - offset && ny <= y + offset)
+		return true;
+	return false;
+}
+
+// 선 충돌 체크
+bool CollidLine(Shape& shape, float nx, float ny)
+{
+	float left = shape.vertices[0].x;
+	float right = shape.vertices[1].x;
+	float y = shape.vertices[0].y;
+
+	float offset = 0.009f; float offsetY = 0.03f;
+
+	if (nx >= left - offset && nx <= right + offset && ny >= y - offsetY && ny <= y + offsetY)
+		return true;
+	return false;
+}
+
+// 사각형 충돌 체크
+bool CollidRect(Shape& shape, float nx, float ny)
+{
+	float left = shape.vertices[0].x;
+	float top = shape.vertices[0].y;
+	float right = shape.vertices[2].x;
+	float bottom = shape.vertices[2].y;
+
+	float offset = 0.009f;
+
+	if (nx >= left - offset && nx <= right + offset && ny >= bottom - offset && ny <= top + offset)
+		return true;
+	return false;
+}
+
 // 충돌 체크(도형이 없으면 -1, 있으면 그 인덱스 반환)
 int IsEmpty(float nx, float ny)
 {
-	for (int i = 0; i < shapes.size(); i++)
+	for (int i = shapes.size() - 1; i >= 0; i--)
 	{
-
+		if (shapes[i].type == ShapeType::Point)
+		{
+			if (CollidPoint(shapes[i], nx, ny)) return i;
+		}
+		else if (shapes[i].type == ShapeType::Line)
+		{
+			if (CollidLine(shapes[i], nx, ny)) return i;
+		}
+		else if (shapes[i].type == ShapeType::Triangle)
+		{
+			
+		}
+		else if (shapes[i].type == ShapeType::Rect)
+		{
+			if (CollidRect(shapes[i], nx, ny)) return i;
+		}
 	}
 	return -1;
 }
@@ -192,8 +258,64 @@ void Mouse(int button, int state, int x, int y)
 		if (state == GLUT_DOWN)
 		{
 			PixelTrans(x, y, mouseX, mouseY);
+			selectedShape = IsEmpty(mouseX, mouseY);
+
+			std::cout << "selectedShape = " << selectedShape << std::endl;
+
+			glutPostRedisplay();
 		}
 	}
+}
+
+void Move()
+{
+	if (selectedShape < 0 || selectedShape >= (int)shapes.size()) return;
+	if (moveDir < 0 || moveDir >= 8) return;
+
+	Shape& center = shapes[selectedShape];
+	if (center.vertices.empty()) return;
+
+	float dx = delta[moveDir].x;
+	float dy = delta[moveDir].y;
+	float nx = center.vertices[0].x + dx;
+	float ny = center.vertices[0].y + dy;
+
+	if (center.type == ShapeType::Point)
+	{
+		if (nx <= 1.0f && nx >= -1.0f)
+			center.vertices[0].x = nx;
+		if (ny <= 1.0f && ny >= -1.0f)
+			center.vertices[0].y = ny;
+	}
+	else if (center.type == ShapeType::Line)
+	{
+		float right = center.vertices[1].x + dx;
+		float bottom = center.vertices[1].y + dy;
+
+		for (auto& v : center.vertices) 
+		{
+			if (right <= 1.0f && nx >= -1.0f)
+				v.x += dx;
+			if (ny <= 1.0f && bottom >= -1.0f)
+				v.y += dy;
+		}
+	}
+	else if (center.type == ShapeType::Rect)
+	{
+		float right = center.vertices[2].x + dx;
+		float bottom = center.vertices[2].y + dy;
+
+		for (auto& v : center.vertices)
+		{
+			if (right <= 1.0f && nx >= -1.0f)
+				v.x += dx;
+			if (ny <= 1.0f && bottom >= -1.0f)
+				v.y += dy;
+		}
+	}
+
+	updateShape(center);
+	glutPostRedisplay();
 }
 
 void Keyboard(unsigned char key, int x, int y)
@@ -205,8 +327,15 @@ void Keyboard(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 	case 'l':
-		AddLine(mouseX, mouseY);
-		glutPostRedisplay();
+		if (selectedShape == -1)
+		{
+			AddLine(mouseX, mouseY);
+			glutPostRedisplay();
+		}
+		else
+		{
+			moveDir = 6; Move();
+		}
 		break;
 	case 't':
 		AddTriangle(mouseX, mouseY);
@@ -220,6 +349,20 @@ void Keyboard(unsigned char key, int x, int y)
 		shapes.clear();
 		glutPostRedisplay();
 		break;
+	case 'w':
+		moveDir = 3; Move(); break;
+	case 'a':
+		moveDir = 0; Move(); break;
+	case 's':
+		moveDir = 2; Move(); break;
+	case 'd':
+		moveDir = 1; Move(); break;
+	case 'i':
+		moveDir = 5; Move(); break;
+	case 'j':
+		moveDir = 7; Move(); break;
+	case 'k':
+		moveDir = 4; Move(); break;
 	}
 }
 
@@ -355,5 +498,6 @@ GLvoid drawScene()
 //--- 다시그리기콜백함수
 GLvoid Reshape(int w, int h)
 {
+	width = w; height = h;
 	glViewport(0, 0, w, h);
 }
