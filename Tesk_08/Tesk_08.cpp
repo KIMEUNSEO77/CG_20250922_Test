@@ -91,7 +91,7 @@ void AddTriangle(float nx, float ny)
 	Shape shape;
 	shape.type = ShapeType::Triangle;
 	shape.color = glm::vec4(0.0, 0.0, 1.0, 1.0); // 파란색
-	shape.vertices = { glm::vec3(nx, ny, 0.0f), glm::vec3(nx - 0.2f, ny - 0.25f, 0.0f), glm::vec3(nx + 0.2f, ny - 0.25f, 0.0f) };
+	shape.vertices = { glm::vec3(nx, ny, 0.0f), glm::vec3(nx - 0.1f, ny - 0.15f, 0.0f), glm::vec3(nx + 0.1f, ny - 0.15f, 0.0f) };
 	updateShape(shape);
 	shapes.push_back(shape);
 }
@@ -226,6 +226,34 @@ bool CollidRect(Shape& shape, float nx, float ny)
 	return false;
 }
 
+// 삼각형 충돌 체크
+bool CollidTriangle(Shape& shape, float nx, float ny)
+{
+	// 삼각형의 세 꼭짓점
+	glm::vec3 A = shape.vertices[0];
+	glm::vec3 B = shape.vertices[1];
+	glm::vec3 C = shape.vertices[2];
+	glm::vec2 P(nx, ny);
+
+	// 외적을 이용한 내부 판정
+	auto sign = [](const glm::vec2& p1, const glm::vec2& p2, const glm::vec2& p3) {
+		return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+		};
+
+	glm::vec2 a(A.x, A.y);
+	glm::vec2 b(B.x, B.y);
+	glm::vec2 c(C.x, C.y);
+
+	float d1 = sign(P, a, b);
+	float d2 = sign(P, b, c);
+	float d3 = sign(P, c, a);
+
+	bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+	bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+	return !(has_neg && has_pos);
+}
+
 // 충돌 체크(도형이 없으면 -1, 있으면 그 인덱스 반환)
 int IsEmpty(float nx, float ny)
 {
@@ -241,7 +269,7 @@ int IsEmpty(float nx, float ny)
 		}
 		else if (shapes[i].type == ShapeType::Triangle)
 		{
-			
+			if (CollidTriangle(shapes[i], nx, ny)) return i;
 		}
 		else if (shapes[i].type == ShapeType::Rect)
 		{
@@ -311,6 +339,17 @@ void Move()
 				v.x += dx;
 			if (ny <= 1.0f && bottom >= -1.0f)
 				v.y += dy;
+		}
+	}
+	else if (center.type == ShapeType::Triangle)
+	{
+		for (auto& v : center.vertices)
+		{
+			float left = center.vertices[1].x + dx;
+			float right = center.vertices[2].x + dx;
+			float bottom = center.vertices[1].y + dy;
+			if (right <= 1.0f && left >= -1.0f) v.x += dx;
+			if (ny <= 1.0f && bottom >= -1.0f) v.y += dy;
 		}
 	}
 
